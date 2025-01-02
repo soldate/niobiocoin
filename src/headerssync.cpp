@@ -156,7 +156,7 @@ bool HeadersSyncState::ValidateAndStoreHeadersCommitments(const std::vector<CBlo
         // they were on. Give up on this sync for now (likely we will start a
         // new sync with a new starting point).
         LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: non-continuous headers at height=%i (presync phase)\n", m_id, m_current_height);
-        return false;
+        return true;
     }
 
     // If it does connect, (minimally) validate and occasionally store
