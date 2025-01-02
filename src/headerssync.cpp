@@ -89,18 +89,14 @@ HeadersSyncState::ProcessingResult HeadersSyncState::ProcessNextHeaders(const
                 // headers from the beginning.
                 ret.request_more = true;
             } else {
-                // Assume(m_download_state == State::PRESYNC);
+                Assume(m_download_state == State::PRESYNC);
                 // If we're in PRESYNC and we get a non-full headers
                 // message, then the peer's chain has ended and definitely doesn't
                 // have enough work, so we can stop our sync.
                 LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: incomplete headers message at height=%i (presync phase)\n", m_id, m_current_height);
-				if (true) ret.request_more = true;
-				m_download_state = State::REDOWNLOAD;
             }
         }
-    } 
-	
-	if (m_download_state == State::REDOWNLOAD) {
+    } else if (m_download_state == State::REDOWNLOAD) {
         // During REDOWNLOAD, we compare our stored commitments to what we
         // receive, and add headers to our redownload buffer. When the buffer
         // gets big enough (meaning that we've checked enough commitments),
@@ -133,8 +129,6 @@ HeadersSyncState::ProcessingResult HeadersSyncState::ProcessNextHeaders(const
                 // Note that there's no more processing to be done with these
                 // headers, so we can still return success.
                 LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: incomplete headers message at height=%i (redownload phase)\n", m_id, m_redownload_buffer_last_height);
-				full_headers_message = true;
-				ret.request_more = true;
             }
         }
     }
@@ -158,7 +152,7 @@ bool HeadersSyncState::ValidateAndStoreHeadersCommitments(const std::vector<CBlo
         // they were on. Give up on this sync for now (likely we will start a
         // new sync with a new starting point).
         LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: non-continuous headers at height=%i (presync phase)\n", m_id, m_current_height);
-        return true;
+        return false;
     }
 
     // If it does connect, (minimally) validate and occasionally store
