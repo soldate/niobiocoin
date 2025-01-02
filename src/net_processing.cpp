@@ -4318,11 +4318,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
         }
 		
-		if (true) {
-			LogDebug(BCLog::NET, "Gambi: from peer %d\n", pfrom.GetId());
-			ProcessBlock(pfrom, pblock, /*force_processing=*/true, /*min_pow_checked=*/true);			
-			return;
-		}
+		LogDebug(BCLog::NET, "1 - Gambi\n");
 
         if (received_new_header) {
             LogInfo("Saw new cmpctblock header hash=%s peer=%d\n",
@@ -4354,9 +4350,11 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             nodestate->m_last_block_announcement = GetTime();
         }
 
+		LogDebug(BCLog::NET, "2 - Gambi\n");
         if (pindex->nStatus & BLOCK_HAVE_DATA) // Nothing to do here
             return;
-
+		LogDebug(BCLog::NET, "3 - Gambi\n");
+		
         auto range_flight = mapBlocksInFlight.equal_range(pindex->GetBlockHash());
         size_t already_in_flight = std::distance(range_flight.first, range_flight.second);
         bool requested_block_from_this_peer{false};
@@ -4372,6 +4370,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             range_flight.first++;
         }
 
+		LogDebug(BCLog::NET, "4 - Gambi\n");
+		
         if (pindex->nChainWork <= m_chainman.ActiveChain().Tip()->nChainWork || // We know something better
                 pindex->nTx != 0) { // We had this block at some point, but pruned it
             if (requested_block_from_this_peer) {
@@ -4384,11 +4384,15 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             return;
         }
 
+		LogDebug(BCLog::NET, "5 - Gambi\n");
+		
         // If we're not close to tip yet, give up and let parallel block fetch work its magic
         if (!already_in_flight && !CanDirectFetch()) {
             return;
         }
 
+		LogDebug(BCLog::NET, "6 - Gambi\n");
+		
         // We want to be a bit conservative just to be extra careful about DoS
         // possibilities in compact block processing...
         if (pindex->nHeight <= m_chainman.ActiveChain().Height() + 2) {
@@ -4483,6 +4487,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         } // cs_main
 
+		LogDebug(BCLog::NET, "7 - Gambi\n");
+		
         if (fProcessBLOCKTXN) {
             BlockTransactions txn;
             txn.blockhash = blockhash;
