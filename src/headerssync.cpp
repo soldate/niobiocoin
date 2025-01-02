@@ -94,6 +94,7 @@ HeadersSyncState::ProcessingResult HeadersSyncState::ProcessNextHeaders(const
                 // message, then the peer's chain has ended and definitely doesn't
                 // have enough work, so we can stop our sync.
                 LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: incomplete headers message at height=%i (presync phase)\n", m_id, m_current_height);
+				if (true) ret.request_more = true;
             }
         }
     } else if (m_download_state == State::REDOWNLOAD) {
