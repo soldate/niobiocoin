@@ -4004,6 +4004,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::GETBLOCKS) {
+		
+		LogDebug(BCLog::NET, "if (msg_type == NetMsgType::GETBLOCKS)");
+		
         CBlockLocator locator;
         uint256 hashStop;
         vRecv >> locator >> hashStop;
@@ -4576,6 +4579,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         ProcessHeadersMessage(pfrom, *peer, std::move(headers), /*via_compact_block=*/false);
+		
+		LogDebug(BCLog::NET, "if (msg_type == NetMsgType::HEADERS)");
 
         // Check if the headers presync progress needs to be reported to validation.
         // This needs to be done without holding the m_headers_presync_mutex lock.
@@ -4590,6 +4595,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 m_chainman.ReportHeadersPresync(stats.first, stats.second->first, stats.second->second);
             }
         }
+		
+		LogDebug(BCLog::NET, "FIM if (msg_type == NetMsgType::HEADERS)");
 
         return;
     }
