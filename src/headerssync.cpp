@@ -133,6 +133,7 @@ HeadersSyncState::ProcessingResult HeadersSyncState::ProcessNextHeaders(const
                 // Note that there's no more processing to be done with these
                 // headers, so we can still return success.
                 LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: incomplete headers message at height=%i (redownload phase)\n", m_id, m_redownload_buffer_last_height);
+				full_headers_message = true;
 				ret.request_more = true;
             }
         }
