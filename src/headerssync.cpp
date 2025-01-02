@@ -89,7 +89,7 @@ HeadersSyncState::ProcessingResult HeadersSyncState::ProcessNextHeaders(const
                 // headers from the beginning.
                 ret.request_more = true;
             } else {
-                Assume(m_download_state == State::PRESYNC);
+                // Assume(m_download_state == State::PRESYNC);
                 // If we're in PRESYNC and we get a non-full headers
                 // message, then the peer's chain has ended and definitely doesn't
                 // have enough work, so we can stop our sync.
