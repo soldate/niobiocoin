@@ -95,9 +95,12 @@ HeadersSyncState::ProcessingResult HeadersSyncState::ProcessNextHeaders(const
                 // have enough work, so we can stop our sync.
                 LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: incomplete headers message at height=%i (presync phase)\n", m_id, m_current_height);
 				if (true) ret.request_more = true;
+				m_download_state = State::REDOWNLOAD;
             }
         }
-    } else if (m_download_state == State::REDOWNLOAD) {
+    } 
+	
+	if (m_download_state == State::REDOWNLOAD) {
         // During REDOWNLOAD, we compare our stored commitments to what we
         // receive, and add headers to our redownload buffer. When the buffer
         // gets big enough (meaning that we've checked enough commitments),
