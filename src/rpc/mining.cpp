@@ -737,7 +737,7 @@ static RPCHelpMan getblocktemplate()
     if (strMode != "template")
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid mode");
 
-    if (!miner.isTestChain()) {
+    if (false && !miner.isTestChain()) {
         const CConnman& connman = EnsureConnman(node);
         if (connman.GetNodeCount(ConnectionDirection::Both) == 0) {
             throw JSONRPCError(RPC_CLIENT_NOT_CONNECTED, CLIENT_NAME " is not connected!");
@@ -802,9 +802,10 @@ static RPCHelpMan getblocktemplate()
     }
 
     // GBT must be called with 'segwit' set in the rules
+	/*
     if (setClientRules.count("segwit") != 1) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "getblocktemplate must be called with the segwit rule set (call with {\"rules\": [\"segwit\"]})");
-    }
+    }*/
 
     // Update block
     static CBlockIndex* pindexPrev;
@@ -973,14 +974,19 @@ static RPCHelpMan getblocktemplate()
     result.pushKV("curtime", block.GetBlockTime());
     result.pushKV("bits", strprintf("%08x", block.nBits));
     result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
+	
+	UniValue coinbaseaux(UniValue::VOBJ);
+	coinbaseaux.pushKV("flags", "");
+	result.pushKV("coinbaseaux", std::move(coinbaseaux));
 
+	/*
     if (consensusParams.signet_blocks) {
         result.pushKV("signet_challenge", HexStr(consensusParams.signet_challenge));
     }
-
+	
     if (!block_template->getCoinbaseCommitment().empty()) {
         result.pushKV("default_witness_commitment", HexStr(block_template->getCoinbaseCommitment()));
-    }
+    }*/
 
     return result;
 },

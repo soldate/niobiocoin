@@ -2561,7 +2561,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
             return;
 
         const std::unordered_set<Network> fixed_seed_networks{GetReachableEmptyNetworks()};
-        if (add_fixed_seeds && !fixed_seed_networks.empty()) {
+        if (false && add_fixed_seeds && !fixed_seed_networks.empty()) {
             // When the node starts with an empty peers.dat, there are a few other sources of peers before
             // we fallback on to fixed seeds: -dnsseed, -seednode, -addnode
             // If none of those are available, we fallback on to fixed seeds immediately, else we allow
