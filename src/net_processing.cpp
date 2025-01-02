@@ -2694,9 +2694,11 @@ bool PeerManagerImpl::MaybeSendGetHeaders(CNode& pfrom, const CBlockLocator& loc
  */
 void PeerManagerImpl::HeadersDirectFetchBlocks(CNode& pfrom, const Peer& peer, const CBlockIndex& last_header)
 {
+	LogDebug(BCLog::NET, "HeadersDirectFetchBlocks");
     LOCK(cs_main);
     CNodeState *nodestate = State(pfrom.GetId());
 
+	LogDebug(BCLog::NET, "1 - HeadersDirectFetchBlocks");
     if (CanDirectFetch() && last_header.IsValid(BLOCK_VALID_TREE) && m_chainman.ActiveChain().Tip()->nChainWork <= last_header.nChainWork) {
         std::vector<const CBlockIndex*> vToFetch;
         const CBlockIndex* pindexWalk{&last_header};
@@ -2719,6 +2721,7 @@ void PeerManagerImpl::HeadersDirectFetchBlocks(CNode& pfrom, const Peer& peer, c
                      last_header.GetBlockHash().ToString(),
                      last_header.nHeight);
         } else {
+			LogDebug(BCLog::NET, "2 else - HeadersDirectFetchBlocks");
             std::vector<CInv> vGetData;
             // Download as much as possible, from earliest to latest.
             for (const CBlockIndex* pindex : vToFetch | std::views::reverse) {
@@ -2737,7 +2740,9 @@ void PeerManagerImpl::HeadersDirectFetchBlocks(CNode& pfrom, const Peer& peer, c
                          last_header.GetBlockHash().ToString(),
                          last_header.nHeight);
             }
+			LogDebug(BCLog::NET, "3 ops - HeadersDirectFetchBlocks");
             if (vGetData.size() > 0) {
+				LogDebug(BCLog::NET, "4 - HeadersDirectFetchBlocks");
                 if (!m_opts.ignore_incoming_txs &&
                         nodestate->m_provides_cmpctblocks &&
                         vGetData.size() == 1 &&
@@ -2746,6 +2751,7 @@ void PeerManagerImpl::HeadersDirectFetchBlocks(CNode& pfrom, const Peer& peer, c
                     // In any case, we want to download using a compact block, not a regular one
                     vGetData[0] = CInv(MSG_CMPCT_BLOCK, vGetData[0].hash);
                 }
+				LogDebug(BCLog::NET, "5 - HeadersDirectFetchBlocks");
                 MakeAndPushMessage(pfrom, NetMsgType::GETDATA, vGetData);
             }
         }
@@ -4284,7 +4290,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::CMPCTBLOCK)
-    {
+    {		
+		LogDebug(BCLog::NET, "0 - Gambi\n");
+		
         // Ignore cmpctblock received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
             LogDebug(BCLog::NET, "Unexpected cmpctblock message received from peer %d\n", pfrom.GetId());
