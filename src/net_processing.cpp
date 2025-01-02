@@ -4317,6 +4317,12 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 return;
             }
         }
+		
+		if (true) {
+			LogDebug(BCLog::NET, "Gambi: from peer %d\n", pfrom.GetId());
+			ProcessBlock(pfrom, pblock, /*force_processing=*/true, /*min_pow_checked=*/true);			
+			return;
+		}
 
         if (received_new_header) {
             LogInfo("Saw new cmpctblock header hash=%s peer=%d\n",
