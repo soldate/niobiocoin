@@ -2940,6 +2940,8 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
         }
     }
     assert(pindexLast);
+	
+	LogDebug(BCLog::NET, "1 - GaGambi\n");
 
     // Consider fetching more headers if we are not using our headers-sync mechanism.
     if (nCount == m_opts.max_headers_result && !have_headers_sync) {
@@ -2949,11 +2951,15 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
                     pindexLast->nHeight, pfrom.GetId(), peer.m_starting_height);
         }
     }
+	
+	LogDebug(BCLog::NET, "2 - GaGambi\n");
 
     UpdatePeerStateForReceivedHeaders(pfrom, peer, *pindexLast, received_new_header, nCount == m_opts.max_headers_result);
 
     // Consider immediately downloading blocks.
     HeadersDirectFetchBlocks(pfrom, peer, *pindexLast);
+	
+	LogDebug(BCLog::NET, "3 - GaGambi\n");
 
     return;
 }
@@ -4590,6 +4596,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::BLOCK)
     {
+		
+		LogDebug(BCLog::NET, "BLOCO AHHHHHHHHHHHHH");
+		
         // Ignore block received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
             LogDebug(BCLog::NET, "Unexpected block message received from peer %d\n", pfrom.GetId());
