@@ -1,4 +1,4 @@
-What is Niobio (NBR)?
+💲 What is Niobio (NBR)?
 =====================================
 
 https://niobiocoin.com.br/
@@ -13,26 +13,30 @@ This way, keeping the code updated is very easy.
 All the changes you can check here:
 https://github.com/bitcoin/bitcoin/compare/master...soldate:niobiocoin:master
 
-**Ubuntu 22**
-=====================================
+## 🔧 Build Instructions for Ubuntu 22
 
+### 🧱 Install dependencies (Ubuntu/WSL)
+
+```bash
 sudo apt-get install build-essential cmake pkgconf python3 libevent-dev libboost-dev libsqlite3-dev libzmq3-dev systemtap-sdt-dev
+```
 
+### 📥 Clone and build
+
+```bash
 git clone https://github.com/soldate/niobiocoin.git
-
+```
+```bash
 cd niobiocoin
-
+```
+```bash
 cmake -B build
-
+```
+```bash
 cmake --build build
+```
 
-**the executables will be at:** 
-
-./build/src/bitcoind
-
-./build/src/bitcoin-cli
-
-
+**the executables will be at: ./build/bin/bitcoind ./build/bin/bitcoin-cli**
 
 BELOW BITCOIN'S README
 =====================================
