@@ -32,9 +32,6 @@ from test_framework.wallet_util import (
 )
 
 class ImportDescriptorsTest(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser, legacy=False)
-
     def set_test_params(self):
         self.num_nodes = 2
         # whitelist peers to speed up tx relay / mempool sync
@@ -47,7 +44,6 @@ class ImportDescriptorsTest(BitcoinTestFramework):
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
-        self.skip_if_no_sqlite()
 
     def test_importdesc(self, req, success, error_code=None, error_message=None, warnings=None, wallet=None):
         """Run importdescriptors and assert success"""
@@ -128,6 +124,20 @@ class ImportDescriptorsTest(BitcoinTestFramework):
         info = w1.getaddressinfo(key.p2pkh_addr)
         assert_equal(info["ismine"], True)
         assert_equal(info["ischange"], True)
+
+        self.log.info("Should not import a descriptor with an invalid public key due to whitespace")
+        self.test_importdesc({"desc": descsum_create("pkh( " + key.pubkey + ")"),
+                                    "timestamp": "now",
+                                    "internal": True},
+                                    error_code=-5,
+                                    error_message=f"pkh(): Key ' {key.pubkey}' is invalid due to whitespace",
+                                    success=False)
+        self.test_importdesc({"desc": descsum_create("pkh(" + key.pubkey + " )"),
+                                    "timestamp": "now",
+                                    "internal": True},
+                                    error_code=-5,
+                                    error_message=f"pkh(): Key '{key.pubkey} ' is invalid due to whitespace",
+                                    success=False)
 
         # # Test importing of a P2SH-P2WPKH descriptor
         key = get_generate_key()

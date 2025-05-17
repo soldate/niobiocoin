@@ -17,9 +17,6 @@ from test_framework.wallet_util import WalletUnlock
 
 
 class WalletEncryptionTest(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -112,7 +109,7 @@ class WalletEncryptionTest(BitcoinTestFramework):
 
             def do_wallet_tool(*args):
                 proc = subprocess.Popen(
-                    [self.options.bitcoinwallet, f"-datadir={self.nodes[0].datadir_path}", f"-chain={self.chain}"] + list(args),
+                    self.get_binaries().wallet_argv() + [f"-datadir={self.nodes[0].datadir_path}", f"-chain={self.chain}"] + list(args),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,

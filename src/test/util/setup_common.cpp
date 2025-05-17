@@ -37,6 +37,7 @@
 #include <scheduler.h>
 #include <script/sigcache.h>
 #include <streams.h>
+#include <test/util/coverage.h>
 #include <test/util/net.h>
 #include <test/util/random.h>
 #include <test/util/txmempool.h>
@@ -48,6 +49,7 @@
 #include <util/rbf.h>
 #include <util/strencodings.h>
 #include <util/string.h>
+#include <util/task_runner.h>
 #include <util/thread.h>
 #include <util/threadnames.h>
 #include <util/time.h>
@@ -58,6 +60,7 @@
 #include <walletinitinterface.h>
 
 #include <algorithm>
+#include <future>
 #include <functional>
 #include <stdexcept>
 
@@ -80,6 +83,7 @@ static const bool g_rng_temp_path_init{[] {
     Assert(!g_used_g_prng);
     (void)g_rng_temp_path.rand64();
     g_used_g_prng = false;
+    ResetCoverageCounters(); // The seed strengthen in SeedStartup is not deterministic, so exclude it from coverage counts
     return true;
 }()};
 
@@ -108,7 +112,7 @@ static void ExitFailure(std::string_view str_err)
 BasicTestingSetup::BasicTestingSetup(const ChainType chainType, TestOpts opts)
     : m_args{}
 {
-    if constexpr (!G_FUZZING) {
+    if (!EnableFuzzDeterminism()) {
         SeedRandomForTest(SeedRand::FIXED_SEED);
     }
     m_node.shutdown_signal = &m_interrupt;
@@ -199,7 +203,7 @@ BasicTestingSetup::~BasicTestingSetup()
 {
     m_node.ecc_context.reset();
     m_node.kernel.reset();
-    if constexpr (!G_FUZZING) {
+    if (!EnableFuzzDeterminism()) {
         SetMockTime(0s); // Reset mocktime for following tests
     }
     LogInstance().DisconnectTestLogger();
@@ -218,12 +222,22 @@ ChainTestingSetup::ChainTestingSetup(const ChainType chainType, TestOpts opts)
 {
     const CChainParams& chainparams = Params();
 
-    // We have to run a scheduler thread to prevent ActivateBestChain
+    // A task runner is required to prevent ActivateBestChain
     // from blocking due to queue overrun.
     if (opts.setup_validation_interface) {
         m_node.scheduler = std::make_unique<CScheduler>();
         m_node.scheduler->m_service_thread = std::thread(util::TraceThread, "scheduler", [&] { m_node.scheduler->serviceQueue(); });
-        m_node.validation_signals = std::make_unique<ValidationSignals>(std::make_unique<SerialTaskRunner>(*m_node.scheduler));
+        m_node.validation_signals =
+            // Use synchronous task runner while fuzzing to avoid non-determinism
+            EnableFuzzDeterminism() ?
+                std::make_unique<ValidationSignals>(std::make_unique<util::ImmediateTaskRunner>()) :
+                std::make_unique<ValidationSignals>(std::make_unique<SerialTaskRunner>(*m_node.scheduler));
+        {
+            // Ensure deterministic coverage by waiting for m_service_thread to be running
+            std::promise<void> promise;
+            m_node.scheduler->scheduleFromNow([&promise] { promise.set_value(); }, 0ms);
+            promise.get_future().wait();
+        }
     }
 
     bilingual_str error{};
@@ -241,7 +255,8 @@ ChainTestingSetup::ChainTestingSetup(const ChainType chainType, TestOpts opts)
             .check_block_index = 1,
             .notifications = *m_node.notifications,
             .signals = m_node.validation_signals.get(),
-            .worker_threads_num = 2,
+            // Use no worker threads while fuzzing to avoid non-determinism
+            .worker_threads_num = EnableFuzzDeterminism() ? 0 : 2,
         };
         if (opts.min_validation_cache) {
             chainman_opts.script_execution_cache_bytes = 0;
@@ -355,7 +370,7 @@ TestChain100Setup::TestChain100Setup(
         LOCK(::cs_main);
         assert(
             m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString() ==
-            "571d80a9967ae599cec0448b0b0ba1cfb606f584d8069bd7166b86854ba7a191");
+            "0c8c5f79505775a0f6aed6aca2350718ceb9c6f2c878667864d5c7a6d8ffa2a6");
     }
 }
 
