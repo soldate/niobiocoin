@@ -7,12 +7,20 @@ Test opportunistic 1p1c package submission logic.
 """
 
 from decimal import Decimal
+import random
 import time
+
+from test_framework.blocktools import MAX_STANDARD_TX_WEIGHT
 from test_framework.mempool_util import (
+    create_large_orphan,
     fill_mempool,
 )
 from test_framework.messages import (
     CInv,
+    COutPoint,
+    CTransaction,
+    CTxIn,
+    CTxOut,
     CTxInWitness,
     MAX_BIP125_RBF_SEQUENCE,
     MSG_WTX,
@@ -21,12 +29,20 @@ from test_framework.messages import (
     tx_from_hex,
 )
 from test_framework.p2p import (
+    NONPREF_PEER_TX_DELAY,
     P2PInterface,
+    TXID_RELAY_DELAY,
+)
+from test_framework.script import (
+    CScript,
+    OP_NOP,
+    OP_RETURN,
 )
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
+    assert_greater_than_or_equal,
 )
 from test_framework.wallet import (
     MiniWallet,
@@ -59,10 +75,8 @@ class PackageRelayTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         self.num_nodes = 1
         self.extra_args = [[
-            "-datacarriersize=100000",
             "-maxmempool=5",
         ]]
-        self.supports_cli = False
 
     def create_tx_below_mempoolminfee(self, wallet):
         """Create a 1-input 1sat/vB transaction using a confirmed UTXO. Decrement and use
@@ -84,7 +98,7 @@ class PackageRelayTest(BitcoinTestFramework):
         peer_sender = node.add_p2p_connection(P2PInterface())
 
         # 1. Child is received first (perhaps the low feerate parent didn't meet feefilter or the requests were sent to different nodes). It is missing an input.
-        high_child_wtxid_int = int(high_fee_child["tx"].getwtxid(), 16)
+        high_child_wtxid_int = high_fee_child["tx"].wtxid_int
         peer_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=high_child_wtxid_int)]))
         peer_sender.wait_for_getdata([high_child_wtxid_int])
         peer_sender.send_and_ping(msg_tx(high_fee_child["tx"]))
@@ -113,7 +127,7 @@ class PackageRelayTest(BitcoinTestFramework):
         peer_ignored = node.add_outbound_p2p_connection(P2PInterface(), p2p_idx=2, connection_type="outbound-full-relay")
 
         # 1. Parent is relayed first. It is too low feerate.
-        parent_wtxid_int = int(low_fee_parent["tx"].getwtxid(), 16)
+        parent_wtxid_int = low_fee_parent["tx"].wtxid_int
         peer_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=parent_wtxid_int)]))
         peer_sender.wait_for_getdata([parent_wtxid_int])
         peer_sender.send_and_ping(msg_tx(low_fee_parent["tx"]))
@@ -124,7 +138,7 @@ class PackageRelayTest(BitcoinTestFramework):
         assert "getdata" not in peer_ignored.last_message
 
         # 2. Child is relayed next. It is missing an input.
-        high_child_wtxid_int = int(high_fee_child["tx"].getwtxid(), 16)
+        high_child_wtxid_int = high_fee_child["tx"].wtxid_int
         peer_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=high_child_wtxid_int)]))
         peer_sender.wait_for_getdata([high_child_wtxid_int])
         peer_sender.send_and_ping(msg_tx(high_fee_child["tx"]))
@@ -157,7 +171,7 @@ class PackageRelayTest(BitcoinTestFramework):
         self.log.info("Check that tx caches low fee parent + low fee child package rejections")
 
         # 1. Send parent, rejected for being low feerate.
-        parent_wtxid_int = int(low_fee_parent["tx"].getwtxid(), 16)
+        parent_wtxid_int = low_fee_parent["tx"].wtxid_int
         peer_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=parent_wtxid_int)]))
         peer_sender.wait_for_getdata([parent_wtxid_int])
         peer_sender.send_and_ping(msg_tx(low_fee_parent["tx"]))
@@ -168,7 +182,7 @@ class PackageRelayTest(BitcoinTestFramework):
         assert "getdata" not in peer_ignored.last_message
 
         # 2. Send an (orphan) child that has a higher feerate, but not enough to bump the parent.
-        med_child_wtxid_int = int(med_fee_child["tx"].getwtxid(), 16)
+        med_child_wtxid_int = med_fee_child["tx"].wtxid_int
         peer_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=med_child_wtxid_int)]))
         peer_sender.wait_for_getdata([med_child_wtxid_int])
         peer_sender.send_and_ping(msg_tx(med_fee_child["tx"]))
@@ -194,7 +208,7 @@ class PackageRelayTest(BitcoinTestFramework):
         assert med_fee_child["txid"] not in node.getrawmempool()
 
         # 5. Send the high feerate (orphan) child
-        high_child_wtxid_int = int(high_fee_child["tx"].getwtxid(), 16)
+        high_child_wtxid_int = high_fee_child["tx"].wtxid_int
         peer_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=high_child_wtxid_int)]))
         peer_sender.wait_for_getdata([high_child_wtxid_int])
         peer_sender.send_and_ping(msg_tx(high_fee_child["tx"]))
@@ -230,7 +244,7 @@ class PackageRelayTest(BitcoinTestFramework):
         parent_sender = node.add_p2p_connection(P2PInterface())
 
         # 1. Child is received first. It is missing an input.
-        child_wtxid_int = int(tx_orphan_bad_wit.getwtxid(), 16)
+        child_wtxid_int = tx_orphan_bad_wit.wtxid_int
         bad_orphan_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=child_wtxid_int)]))
         bad_orphan_sender.wait_for_getdata([child_wtxid_int])
         bad_orphan_sender.send_and_ping(msg_tx(tx_orphan_bad_wit))
@@ -246,7 +260,7 @@ class PackageRelayTest(BitcoinTestFramework):
         # 4. Transactions should not be in mempool.
         node_mempool = node.getrawmempool()
         assert low_fee_parent["txid"] not in node_mempool
-        assert tx_orphan_bad_wit.rehash() not in node_mempool
+        assert tx_orphan_bad_wit.txid_hex not in node_mempool
 
         # 5. Have the other peer send the tx too, so that tx_orphan_bad_wit package is attempted.
         bad_orphan_sender.send_without_ping(msg_tx(low_fee_parent["tx"]))
@@ -271,13 +285,13 @@ class PackageRelayTest(BitcoinTestFramework):
         fake_parent_sender = node.add_p2p_connection(P2PInterface())
 
         # 1. Child is received first. It is missing an input.
-        child_wtxid_int = int(high_fee_child["tx"].getwtxid(), 16)
+        child_wtxid_int = high_fee_child["tx"].wtxid_int
         package_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=child_wtxid_int)]))
         package_sender.wait_for_getdata([child_wtxid_int])
         package_sender.send_and_ping(msg_tx(high_fee_child["tx"]))
 
         # 2. Node requests the missing parent by txid.
-        parent_txid_int = int(tx_parent_bad_wit.rehash(), 16)
+        parent_txid_int = tx_parent_bad_wit.txid_int
         package_sender.wait_for_getdata([parent_txid_int])
 
         # 3. A different node relays the parent. The parent is first evaluated by itself and
@@ -287,13 +301,13 @@ class PackageRelayTest(BitcoinTestFramework):
 
         # 4. Transactions should not be in mempool.
         node_mempool = node.getrawmempool()
-        assert tx_parent_bad_wit.rehash() not in node_mempool
+        assert tx_parent_bad_wit.txid_hex not in node_mempool
         assert high_fee_child["txid"] not in node_mempool
 
         self.log.info("Check that fake parent does not cause orphan to be deleted and real package can still be submitted")
         # 5. Child-sending should not have been punished and the orphan should remain in orphanage.
         # It can send the "real" parent transaction, and the package is accepted.
-        parent_wtxid_int = int(low_fee_parent["tx"].getwtxid(), 16)
+        parent_wtxid_int = low_fee_parent["tx"].wtxid_int
         package_sender.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=parent_wtxid_int)]))
         package_sender.wait_for_getdata([parent_wtxid_int])
         package_sender.send_and_ping(msg_tx(low_fee_parent["tx"]))
@@ -375,6 +389,164 @@ class PackageRelayTest(BitcoinTestFramework):
         result_missing_parent = node.submitpackage(package_hex_missing_parent)
         assert_equal(result_missing_parent["package_msg"], "package-not-child-with-unconfirmed-parents")
 
+    def create_small_orphan(self):
+        """Create small orphan transaction"""
+        tx = CTransaction()
+        # Nonexistent UTXO
+        tx.vin = [CTxIn(COutPoint(random.randrange(1 << 256), random.randrange(1, 100)))]
+        tx.wit.vtxinwit = [CTxInWitness()]
+        tx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_NOP] * 5)]
+        tx.vout = [CTxOut(100, CScript([OP_RETURN, b'a' * 3]))]
+        return tx
+
+    @cleanup
+    def test_orphanage_dos_large(self):
+        self.log.info("Test that the node can still resolve orphans when peers use lots of orphanage space")
+        node = self.nodes[0]
+        node.setmocktime(int(time.time()))
+
+        peer_normal = node.add_p2p_connection(P2PInterface())
+        peer_doser = node.add_p2p_connection(P2PInterface())
+
+        self.log.info("Create very large orphans to be sent by DoSy peers (may take a while)")
+        large_orphans = [create_large_orphan() for _ in range(100)]
+        # Check to make sure these are orphans, within max standard size (to be accepted into the orphanage)
+        for large_orphan in large_orphans:
+            assert_greater_than_or_equal(100000, large_orphan.get_vsize())
+            assert_greater_than(MAX_STANDARD_TX_WEIGHT, large_orphan.get_weight())
+            assert_greater_than_or_equal(3 * large_orphan.get_vsize(), 2 * 100000)
+            testres = node.testmempoolaccept([large_orphan.serialize().hex()])
+            assert not testres[0]["allowed"]
+            assert_equal(testres[0]["reject-reason"], "missing-inputs")
+
+        num_individual_dosers = 30
+        self.log.info(f"Connect {num_individual_dosers} peers and send a very large orphan from each one")
+        # This test assumes that unrequested transactions are processed (skipping inv and
+        # getdata steps because they require going through request delays)
+        # Connect 20 peers and have each of them send a large orphan.
+        for large_orphan in large_orphans[:num_individual_dosers]:
+            peer_doser_individual = node.add_p2p_connection(P2PInterface())
+            peer_doser_individual.send_and_ping(msg_tx(large_orphan))
+            node.bumpmocktime(NONPREF_PEER_TX_DELAY + TXID_RELAY_DELAY)
+            peer_doser_individual.wait_for_getdata([large_orphan.vin[0].prevout.hash])
+
+        # Make sure that these transactions are going through the orphan handling codepaths.
+        # Subsequent rounds will not wait for getdata because the time mocking will cause the
+        # normal package request to time out.
+        self.wait_until(lambda: len(node.getorphantxs()) == num_individual_dosers)
+
+        self.log.info("Send an orphan from a non-DoSy peer. Its orphan should not be evicted.")
+        low_fee_parent = self.create_tx_below_mempoolminfee(self.wallet)
+        high_fee_child = self.wallet.create_self_transfer(
+            utxo_to_spend=low_fee_parent["new_utxo"],
+            fee_rate=200*FEERATE_1SAT_VB,
+            target_vsize=100000
+        )
+
+        # Announce
+        orphan_tx = high_fee_child["tx"]
+        orphan_inv = CInv(t=MSG_WTX, h=orphan_tx.wtxid_int)
+
+        # Wait for getdata
+        peer_normal.send_and_ping(msg_inv([orphan_inv]))
+        node.bumpmocktime(NONPREF_PEER_TX_DELAY)
+        peer_normal.wait_for_getdata([orphan_tx.wtxid_int])
+        peer_normal.send_and_ping(msg_tx(orphan_tx))
+
+        # Wait for parent request
+        parent_txid_int = int(low_fee_parent["txid"], 16)
+        node.bumpmocktime(NONPREF_PEER_TX_DELAY + TXID_RELAY_DELAY)
+        peer_normal.wait_for_getdata([parent_txid_int])
+
+        self.log.info("Send another round of very large orphans from a DoSy peer")
+        for large_orphan in large_orphans[30:]:
+            peer_doser.send_and_ping(msg_tx(large_orphan))
+
+        # Something was evicted; the orphanage does not contain all large orphans + the 1p1c child
+        self.wait_until(lambda: len(node.getorphantxs()) < len(large_orphans) + 1)
+
+        self.log.info("Provide the orphan's parent. This 1p1c package should be successfully accepted.")
+        peer_normal.send_and_ping(msg_tx(low_fee_parent["tx"]))
+        assert_equal(node.getmempoolentry(orphan_tx.txid_hex)["ancestorcount"], 2)
+
+    @cleanup
+    def test_orphanage_dos_many(self):
+        self.log.info("Test that the node can still resolve orphans when peers are sending tons of orphans")
+        node = self.nodes[0]
+        node.setmocktime(int(time.time()))
+
+        peer_normal = node.add_p2p_connection(P2PInterface())
+
+        # 2 sets of peers: the first set all send the same batch_size orphans. The second set each
+        # sends batch_size distinct orphans.
+        batch_size = 51
+        num_peers_shared = 60
+        num_peers_unique = 40
+
+        # 60 peers * 51 orphans = 3060 announcements
+        shared_orphans = [self.create_small_orphan() for _ in range(batch_size)]
+        self.log.info(f"Send the same {batch_size} orphans from {num_peers_shared} DoSy peers (may take a while)")
+        peer_doser_shared = [node.add_p2p_connection(P2PInterface()) for _ in range(num_peers_shared)]
+        for i in range(num_peers_shared):
+            for orphan in shared_orphans:
+                peer_doser_shared[i].send_without_ping(msg_tx(orphan))
+
+        # We sync peers to make sure we have processed as many orphans as possible. Ensure at least
+        # one of the orphans was processed.
+        for peer_doser in peer_doser_shared:
+            peer_doser.sync_with_ping()
+        self.wait_until(lambda: any([tx.txid_hex in node.getorphantxs() for tx in shared_orphans]))
+
+        self.log.info("Send an orphan from a non-DoSy peer. Its orphan should not be evicted.")
+        low_fee_parent = self.create_tx_below_mempoolminfee(self.wallet)
+        high_fee_child = self.wallet.create_self_transfer(
+            utxo_to_spend=low_fee_parent["new_utxo"],
+            fee_rate=200*FEERATE_1SAT_VB,
+        )
+
+        # Announce
+        orphan_tx = high_fee_child["tx"]
+        orphan_inv = CInv(t=MSG_WTX, h=orphan_tx.wtxid_int)
+
+        # Wait for getdata
+        peer_normal.send_and_ping(msg_inv([orphan_inv]))
+        node.bumpmocktime(NONPREF_PEER_TX_DELAY)
+        peer_normal.wait_for_getdata([orphan_tx.wtxid_int])
+        peer_normal.send_and_ping(msg_tx(orphan_tx))
+
+        # Orphan has been entered and evicted something else
+        self.wait_until(lambda: high_fee_child["txid"] in node.getorphantxs())
+
+        # Wait for parent request
+        parent_txid_int = low_fee_parent["tx"].txid_int
+        node.bumpmocktime(NONPREF_PEER_TX_DELAY + TXID_RELAY_DELAY)
+        peer_normal.wait_for_getdata([parent_txid_int])
+
+        # Each of the num_peers_unique peers creates a distinct set of orphans
+        many_orphans = [self.create_small_orphan() for _ in range(batch_size * num_peers_unique)]
+
+        self.log.info(f"Send sets of {batch_size} orphans from {num_peers_unique} DoSy peers (may take a while)")
+        for peernum in range(num_peers_unique):
+            peer_doser_batch = node.add_p2p_connection(P2PInterface())
+            this_batch_orphans = many_orphans[batch_size*peernum : batch_size*(peernum+1)]
+            for tx in this_batch_orphans:
+                # Don't wait for responses, because it dramatically increases the runtime of this test.
+                peer_doser_batch.send_without_ping(msg_tx(tx))
+
+            # Ensure at least one of the peer's orphans shows up in getorphantxs. Since each peer is
+            # reserved a portion of orphanage space, this must happen as long as the orphans are not
+            # rejected for some other reason.
+            peer_doser_batch.sync_with_ping()
+            self.wait_until(lambda: any([tx.txid_hex in node.getorphantxs() for tx in this_batch_orphans]))
+
+        self.log.info("Check that orphan from normal peer still exists in orphanage")
+        assert high_fee_child["txid"] in node.getorphantxs()
+
+        self.log.info("Provide the orphan's parent. This 1p1c package should be successfully accepted.")
+        peer_normal.send_and_ping(msg_tx(low_fee_parent["tx"]))
+        assert orphan_tx.txid_hex in node.getrawmempool()
+        assert_equal(node.getmempoolentry(orphan_tx.txid_hex)["ancestorcount"], 2)
+
     def run_test(self):
         node = self.nodes[0]
         # To avoid creating transactions with the same txid (can happen if we set the same feerate
@@ -408,6 +580,9 @@ class PackageRelayTest(BitcoinTestFramework):
         self.test_parent_consensus_failure()
         self.test_multiple_parents()
         self.test_other_parent_in_mempool()
+
+        self.test_orphanage_dos_large()
+        self.test_orphanage_dos_many()
 
 
 if __name__ == '__main__':

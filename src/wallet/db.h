@@ -155,6 +155,9 @@ public:
     /** Return path to main database file for logs and error messages. */
     virtual std::string Filename() = 0;
 
+    /** Return paths to all database created files */
+    virtual std::vector<fs::path> Files() = 0;
+
     virtual std::string Format() = 0;
 
     /** Make a DatabaseBatch connected to this database */
@@ -184,6 +187,7 @@ enum class DatabaseStatus {
     SUCCESS,
     FAILED_BAD_PATH,
     FAILED_BAD_FORMAT,
+    FAILED_LEGACY_DISABLED,
     FAILED_ALREADY_LOADED,
     FAILED_ALREADY_EXISTS,
     FAILED_NOT_FOUND,

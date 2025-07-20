@@ -67,6 +67,10 @@ class FillableSigningProvider;
 class CScript;
 struct Sections;
 
+struct HelpResult : std::runtime_error {
+    explicit HelpResult(const std::string& msg) : std::runtime_error{msg} {}
+};
+
 /**
  * Gets all existing output types formatted for RPC help sections.
  *
@@ -137,7 +141,7 @@ CTxDestination AddAndGetMultisigDestination(const int required, const std::vecto
 UniValue DescribeAddress(const CTxDestination& dest);
 
 /** Parse a sighash string representation and raise an RPC error if it is invalid. */
-int ParseSighashString(const UniValue& sighash);
+std::optional<int> ParseSighashString(const UniValue& sighash);
 
 //! Parse a confirm target option and raise an RPC error if it is invalid.
 unsigned int ParseConfirmTarget(const UniValue& value, unsigned int max_target);

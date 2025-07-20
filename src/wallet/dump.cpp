@@ -61,7 +61,7 @@ bool DumpWallet(const ArgsManager& args, WalletDatabase& db, bilingual_str& erro
 
     // Write out the file format
     std::string format = db.Format();
-    // BDB files that are opened using BerkeleyRODatabase have it's format as "bdb_ro"
+    // BDB files that are opened using BerkeleyRODatabase have its format as "bdb_ro"
     // We want to override that format back to "bdb"
     if (format == "bdb_ro") {
         format = "bdb";
@@ -151,13 +151,13 @@ bool CreateFromDump(const ArgsManager& args, const std::string& name, const fs::
         return false;
     }
     // Check the version number (value of first record)
-    uint32_t ver;
-    if (!ParseUInt32(version_value, &ver)) {
-        error =strprintf(_("Error: Unable to parse version %u as a uint32_t"), version_value);
+    const auto ver{ToIntegral<uint32_t>(version_value)};
+    if (!ver) {
+        error = strprintf(_("Error: Unable to parse version %u as a uint32_t"), version_value);
         dump_file.close();
         return false;
     }
-    if (ver != DUMP_VERSION) {
+    if (*ver != DUMP_VERSION) {
         error = strprintf(_("Error: Dumpfile version is not supported. This version of bitcoin-wallet only supports version 1 dumpfiles. Got dumpfile with version %s"), version_value);
         dump_file.close();
         return false;

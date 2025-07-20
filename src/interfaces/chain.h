@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2018-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,14 +7,15 @@
 
 #include <blockfilter.h>
 #include <common/settings.h>
-#include <primitives/transaction.h> // For CTransactionRef
+#include <primitives/transaction.h>
 #include <util/result.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
-#include <stddef.h>
-#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -207,7 +208,7 @@ public:
     virtual RBFTransactionState isRBFOptIn(const CTransaction& tx) = 0;
 
     //! Check if transaction is in mempool.
-    virtual bool isInMempool(const uint256& txid) = 0;
+    virtual bool isInMempool(const Txid& txid) = 0;
 
     //! Check if transaction has descendants in mempool.
     virtual bool hasDescendantsInMempool(const uint256& txid) = 0;
@@ -326,6 +327,17 @@ public:
         virtual void chainStateFlushed(ChainstateRole role, const CBlockLocator& locator) {}
     };
 
+    //! Options specifying which chain notifications are required.
+    struct NotifyOptions
+    {
+        //! Include undo data with block connected notifications.
+        bool connect_undo_data = false;
+        //! Include block data with block disconnected notifications.
+        bool disconnect_data = false;
+        //! Include undo data with block disconnected notifications.
+        bool disconnect_undo_data = false;
+    };
+
     //! Register handler for notifications.
     virtual std::unique_ptr<Handler> handleNotifications(std::shared_ptr<Notifications> notifications) = 0;
 
@@ -339,9 +351,6 @@ public:
 
     //! Check if deprecated RPC is enabled.
     virtual bool rpcEnableDeprecated(const std::string& method) = 0;
-
-    //! Run function after given number of seconds. Cancel any previous calls with same name.
-    virtual void rpcRunLater(const std::string& name, std::function<void()> fn, int64_t seconds) = 0;
 
     //! Get settings value.
     virtual common::SettingsValue getSetting(const std::string& arg) = 0;

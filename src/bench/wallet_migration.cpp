@@ -28,9 +28,12 @@ static void WalletMigration(benchmark::Bench& bench)
 
     // Setup legacy wallet
     std::unique_ptr<CWallet> wallet = std::make_unique<CWallet>(test_setup->m_node.chain.get(), "", CreateMockableWalletDatabase());
-    wallet->chainStateFlushed(ChainstateRole::NORMAL, CBlockLocator{});
     LegacyDataSPKM* legacy_spkm = wallet->GetOrCreateLegacyDataSPKM();
     WalletBatch batch{wallet->GetDatabase()};
+
+    // Write a best block record as migration expects one to exist
+    CBlockLocator loc;
+    batch.WriteBestBlock(loc);
 
     // Add watch-only addresses
     std::vector<CScript> scripts_watch_only;
@@ -63,7 +66,7 @@ static void WalletMigration(benchmark::Bench& bench)
 
     bench.epochs(/*numEpochs=*/1).epochIterations(/*numIters=*/1) // run the migration exactly once
          .run([&] {
-             auto res{MigrateLegacyToDescriptor(std::move(wallet), /*passphrase=*/"", *loader->context(), /*was_loaded=*/false)};
+             auto res{MigrateLegacyToDescriptor(std::move(wallet), /*passphrase=*/"", *loader->context())};
              assert(res);
              assert(res->wallet);
              assert(res->watchonly_wallet);

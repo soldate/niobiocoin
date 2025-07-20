@@ -44,6 +44,7 @@ class CreateWalletTest(BitcoinTestFramework):
         assert_raises_rpc_error(-4, "Error: This wallet has no available keys", w1.getrawchangeaddress)
         import_res = w1.importdescriptors([{"desc": w0.getaddressinfo(address1)['desc'], "timestamp": "now"}])
         assert_equal(import_res[0]["success"], True)
+        assert_equal(sorted(w1.getwalletinfo()["flags"]), sorted(["last_hardened_xpub_cached", "descriptor_wallet", "disable_private_keys"]))
 
         self.log.info('Test that private keys cannot be imported')
         privkey, pubkey = generate_keypair(wif=True)
@@ -164,6 +165,19 @@ class CreateWalletTest(BitcoinTestFramework):
 
         self.log.info("Test that legacy wallets cannot be created")
         assert_raises_rpc_error(-4, 'descriptors argument must be set to "true"; it is no longer possible to create a legacy wallet.', self.nodes[0].createwallet, wallet_name="legacy", descriptors=False)
+
+        self.log.info("Check that the version number is being logged correctly")
+        with node.assert_debug_log(expected_msgs=[], unexpected_msgs=["Last client version = ", "Wallet file version = "]):
+            node.createwallet("version_check")
+        wallet = node.get_wallet_rpc("version_check")
+        wallet_version = wallet.getwalletinfo()["walletversion"]
+        client_version = node.getnetworkinfo()["version"]
+        wallet.unloadwallet()
+        with node.assert_debug_log(
+            expected_msgs=[f"Last client version = {client_version}", f"Wallet file version = {wallet_version}"],
+            unexpected_msgs=["Wallet file version = 10500"]
+        ):
+            node.loadwallet("version_check")
 
 
 if __name__ == '__main__':

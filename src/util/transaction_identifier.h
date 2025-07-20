@@ -1,9 +1,18 @@
+// Copyright (c) 2023-present The Bitcoin Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or https://opensource.org/license/mit.
+
 #ifndef BITCOIN_UTIL_TRANSACTION_IDENTIFIER_H
 #define BITCOIN_UTIL_TRANSACTION_IDENTIFIER_H
 
 #include <attributes.h>
 #include <uint256.h>
 #include <util/types.h>
+
+#include <compare>
+#include <concepts>
+#include <tuple>
+#include <variant>
 
 /** transaction_identifier represents the two canonical transaction identifier
  * types (txid, wtxid).*/
@@ -71,5 +80,26 @@ public:
 using Txid = transaction_identifier<false>;
 /** Wtxid commits to all transaction fields including the witness. */
 using Wtxid = transaction_identifier<true>;
+
+template <typename T>
+concept TxidOrWtxid = std::is_same_v<T, Txid> || std::is_same_v<T, Wtxid>;
+
+class GenTxid : public std::variant<Txid, Wtxid>
+{
+public:
+    using variant::variant;
+
+    bool IsWtxid() const { return std::holds_alternative<Wtxid>(*this); }
+
+    const uint256& ToUint256() const LIFETIMEBOUND
+    {
+        return std::visit([](const auto& id) -> const uint256& { return id.ToUint256(); }, *this);
+    }
+
+    friend auto operator<=>(const GenTxid& a, const GenTxid& b)
+    {
+        return std::tuple(a.IsWtxid(), a.ToUint256()) <=> std::tuple(b.IsWtxid(), b.ToUint256());
+    }
+};
 
 #endif // BITCOIN_UTIL_TRANSACTION_IDENTIFIER_H

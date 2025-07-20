@@ -277,6 +277,7 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   node/timeoffsets.cpp
   node/transaction.cpp
   node/txdownloadman_impl.cpp
+  node/txorphanage.cpp
   node/txreconciliation.cpp
   node/utxo_snapshot.cpp
   node/warnings.cpp
@@ -308,7 +309,6 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   txdb.cpp
   txgraph.cpp
   txmempool.cpp
-  txorphanage.cpp
   txrequest.cpp
   validation.cpp
   validationinterface.cpp
@@ -332,6 +332,14 @@ target_link_libraries(bitcoin_node
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
 )
 
+# Bitcoin wrapper executable that can call other executables.
+if(BUILD_BITCOIN_BIN)
+  add_executable(bitcoin bitcoin.cpp)
+  add_windows_resources(bitcoin bitcoin-res.rc)
+  add_windows_application_manifest(bitcoin)
+  target_link_libraries(bitcoin core_interface bitcoin_util)
+  install_binary_component(bitcoin)
+endif()
 
 # Bitcoin Core bitcoind.
 if(BUILD_DAEMON)

@@ -264,25 +264,21 @@ static UniValue ProcessDescriptorImport(CWallet& wallet, const UniValue& data, c
             auto spk_manager_res = wallet.AddWalletDescriptor(w_desc, keys, label, desc_internal);
 
             if (!spk_manager_res) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, util::ErrorString(spk_manager_res).original);
+                throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Could not add descriptor '%s': %s", descriptor, util::ErrorString(spk_manager_res).original));
             }
 
-            auto spk_manager = spk_manager_res.value();
-
-            if (spk_manager == nullptr) {
-                throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Could not add descriptor '%s'", descriptor));
-            }
+            auto& spk_manager = spk_manager_res.value().get();
 
             // Set descriptor as active if necessary
             if (active) {
                 if (!w_desc.descriptor->GetOutputType()) {
                     warnings.push_back("Unknown output type, cannot set descriptor to active.");
                 } else {
-                    wallet.AddActiveScriptPubKeyMan(spk_manager->GetID(), *w_desc.descriptor->GetOutputType(), desc_internal);
+                    wallet.AddActiveScriptPubKeyMan(spk_manager.GetID(), *w_desc.descriptor->GetOutputType(), desc_internal);
                 }
             } else {
                 if (w_desc.descriptor->GetOutputType()) {
-                    wallet.DeactivateScriptPubKeyMan(spk_manager->GetID(), *w_desc.descriptor->GetOutputType(), desc_internal);
+                    wallet.DeactivateScriptPubKeyMan(spk_manager.GetID(), *w_desc.descriptor->GetOutputType(), desc_internal);
                 }
             }
         }
@@ -360,11 +356,6 @@ RPCHelpMan importdescriptors()
     // the user could have gotten from another RPC command prior to now
     wallet.BlockUntilSyncedToCurrentChain();
 
-    //  Make sure wallet is a descriptor wallet
-    if (!pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "importdescriptors is not available for non-descriptor wallets");
-    }
-
     WalletRescanReserver reserver(*pwallet);
     if (!reserver.reserve(/*with_passphrase=*/true)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Wallet is currently rescanning. Abort existing rescan or wait.");
@@ -403,6 +394,7 @@ RPCHelpMan importdescriptors()
             }
         }
         pwallet->ConnectScriptPubKeyManNotifiers();
+        pwallet->RefreshAllTXOs();
     }
 
     // Rescan the blockchain using the lowest timestamp
@@ -466,7 +458,7 @@ RPCHelpMan listdescriptors()
 {
     return RPCHelpMan{
         "listdescriptors",
-        "List descriptors imported into a descriptor-enabled wallet.\n",
+        "List all descriptors present in a wallet.\n",
         {
             {"private", RPCArg::Type::BOOL, RPCArg::Default{false}, "Show private descriptors."}
         },
@@ -496,10 +488,6 @@ RPCHelpMan listdescriptors()
 {
     const std::shared_ptr<const CWallet> wallet = GetWalletForJSONRPCRequest(request);
     if (!wallet) return UniValue::VNULL;
-
-    if (!wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "listdescriptors is not available for non-descriptor wallets");
-    }
 
     const bool priv = !request.params[0].isNull() && request.params[0].get_bool();
     if (priv) {
@@ -615,8 +603,8 @@ RPCHelpMan restorewallet()
     return RPCHelpMan{
         "restorewallet",
         "Restores and loads a wallet from backup.\n"
-        "\nThe rescan is significantly faster if a descriptor wallet is restored"
-        "\nand block filters are available (using startup option \"-blockfilterindex=1\").\n",
+        "\nThe rescan is significantly faster if block filters are available"
+        "\n(using startup option \"-blockfilterindex=1\").\n",
         {
             {"wallet_name", RPCArg::Type::STR, RPCArg::Optional::NO, "The name that will be applied to the restored wallet"},
             {"backup_file", RPCArg::Type::STR, RPCArg::Optional::NO, "The backup file that will be used to restore the wallet."},

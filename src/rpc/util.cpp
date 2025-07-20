@@ -357,10 +357,10 @@ UniValue DescribeAddress(const CTxDestination& dest)
  *
  * @pre The sighash argument should be string or null.
 */
-int ParseSighashString(const UniValue& sighash)
+std::optional<int> ParseSighashString(const UniValue& sighash)
 {
     if (sighash.isNull()) {
-        return SIGHASH_DEFAULT;
+        return std::nullopt;
     }
     const auto result{SighashFromStr(sighash.get_str())};
     if (!result) {
@@ -645,7 +645,7 @@ UniValue RPCHelpMan::HandleRequest(const JSONRPCRequest& request) const
      * the user is asking for help information, and throw help when appropriate.
      */
     if (request.mode == JSONRPCRequest::GET_HELP || !IsValidNumArgs(request.params.size())) {
-        throw std::runtime_error(ToString());
+        throw HelpResult{ToString()};
     }
     UniValue arg_mismatch{UniValue::VOBJ};
     for (size_t i{0}; i < m_args.size(); ++i) {

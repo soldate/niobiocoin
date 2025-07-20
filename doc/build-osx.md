@@ -182,8 +182,8 @@ After configuration, you are ready to compile.
 Run the following in your terminal to compile Bitcoin Core:
 
 ``` bash
-cmake --build build     # Use "-j N" here for N parallel jobs.
-ctest --test-dir build  # Use "-j N" for N parallel tests. Some tests are disabled if Python 3 is not available.
+cmake --build build     # Append "-j N" here for N parallel jobs.
+ctest --test-dir build  # Append "-j N" for N parallel tests. Some tests are disabled if Python 3 is not available.
 ```
 
 ### 3. Deploy (optional)
@@ -198,6 +198,10 @@ cmake --build build --target deploy
 
 Bitcoin Core should now be available at `./build/bin/bitcoind`.
 If you compiled support for the GUI, it should be available at `./build/bin/bitcoin-qt`.
+
+There is also a multifunction command line interface at `./build/bin/bitcoin`
+supporting subcommands like `bitcoin node`, `bitcoin gui`, `bitcoin rpc`, and
+others that can be listed with `bitcoin help`.
 
 The first time you run `bitcoind` or `bitcoin-qt`, it will start downloading the blockchain.
 This process could take many hours, or even days on slower than average systems.

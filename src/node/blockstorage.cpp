@@ -31,13 +31,16 @@
 #include <util/batchpriority.h>
 #include <util/check.h>
 #include <util/fs.h>
+#include <util/obfuscation.h>
 #include <util/signalinterrupt.h>
 #include <util/strencodings.h>
+#include <util/syserror.h>
 #include <util/translation.h>
 #include <validation.h>
 
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <unordered_map>
 
 namespace kernel {
@@ -777,13 +780,13 @@ void BlockManager::UnlinkPrunedFiles(const std::set<int>& setFilesToPrune) const
 
 AutoFile BlockManager::OpenBlockFile(const FlatFilePos& pos, bool fReadOnly) const
 {
-    return AutoFile{m_block_file_seq.Open(pos, fReadOnly), m_xor_key};
+    return AutoFile{m_block_file_seq.Open(pos, fReadOnly), m_obfuscation};
 }
 
 /** Open an undo file (rev?????.dat) */
 AutoFile BlockManager::OpenUndoFile(const FlatFilePos& pos, bool fReadOnly) const
 {
-    return AutoFile{m_undo_file_seq.Open(pos, fReadOnly), m_xor_key};
+    return AutoFile{m_undo_file_seq.Open(pos, fReadOnly), m_obfuscation};
 }
 
 fs::path BlockManager::GetBlockPosFilename(const FlatFilePos& pos) const
@@ -940,13 +943,13 @@ bool BlockManager::WriteBlockUndo(const CBlockUndo& blockundo, BlockValidationSt
             return false;
         }
 
+        // Open history file to append
+        AutoFile file{OpenUndoFile(pos)};
+        if (file.IsNull()) {
+            LogError("OpenUndoFile failed for %s while writing block undo", pos.ToString());
+            return FatalError(m_opts.notifications, state, _("Failed to write undo data."));
+        }
         {
-            // Open history file to append
-            AutoFile file{OpenUndoFile(pos)};
-            if (file.IsNull()) {
-                LogError("OpenUndoFile failed for %s while writing block undo", pos.ToString());
-                return FatalError(m_opts.notifications, state, _("Failed to write undo data."));
-            }
             BufferedWriter fileout{file};
 
             // Write index header
@@ -959,8 +962,13 @@ bool BlockManager::WriteBlockUndo(const CBlockUndo& blockundo, BlockValidationSt
                 // Write undo data & checksum
                 fileout << blockundo << hasher.GetHash();
             }
+            // BufferedWriter will flush pending data to file when fileout goes out of scope.
+        }
 
-            fileout.flush(); // Make sure `AutoFile`/`BufferedWriter` go out of scope before we call `FlushUndoFile`
+        // Make sure that the file is closed before we call `FlushUndoFile`.
+        if (file.fclose() != 0) {
+            LogError("Failed to close block undo file %s: %s", pos.ToString(), SysErrorString(errno));
+            return FatalError(m_opts.notifications, state, _("Failed to close block undo file."));
         }
 
         // rev files are written in block height order, whereas blk files are written as blocks come in (often out of order)
@@ -989,12 +997,12 @@ bool BlockManager::WriteBlockUndo(const CBlockUndo& blockundo, BlockValidationSt
     return true;
 }
 
-bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos) const
+bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::optional<uint256>& expected_hash) const
 {
     block.SetNull();
 
     // Open history file to read
-    std::vector<uint8_t> block_data;
+    std::vector<std::byte> block_data;
     if (!ReadRawBlock(block_data, pos)) {
         return false;
     }
@@ -1007,8 +1015,10 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos) const
         return false;
     }
 
+    const auto block_hash{block.GetHash()};
+
     // Check the header
-    if (!CheckProofOfWork(block.GetHash(), block.nBits, GetConsensus())) {
+    if (!CheckProofOfWork(block_hash, block.nBits, GetConsensus())) {
         LogError("Errors in block header at %s while reading block", pos.ToString());
         return false;
     }
@@ -1019,24 +1029,22 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos) const
         return false;
     }
 
+    if (expected_hash && block_hash != *expected_hash) {
+        LogError("GetHash() doesn't match index at %s while reading block (%s != %s)",
+                 pos.ToString(), block_hash.ToString(), expected_hash->ToString());
+        return false;
+    }
+
     return true;
 }
 
 bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
 {
     const FlatFilePos block_pos{WITH_LOCK(cs_main, return index.GetBlockPos())};
-
-    if (!ReadBlock(block, block_pos)) {
-        return false;
-    }
-    if (block.GetHash() != index.GetBlockHash()) {
-        LogError("GetHash() doesn't match index for %s at %s while reading block", index.ToString(), block_pos.ToString());
-        return false;
-    }
-    return true;
+    return ReadBlock(block, block_pos, index.GetBlockHash());
 }
 
-bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& pos) const
+bool BlockManager::ReadRawBlock(std::vector<std::byte>& block, const FlatFilePos& pos) const
 {
     if (pos.nPos < STORAGE_HEADER_BYTES) {
         // If nPos is less than STORAGE_HEADER_BYTES, we can't read the header that precedes the block data
@@ -1070,7 +1078,7 @@ bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& 
         }
 
         block.resize(blk_size); // Zeroing of memory is intentional here
-        filein.read(MakeWritableByteSpan(block));
+        filein.read(block);
     } catch (const std::exception& e) {
         LogError("Read from block file failed: %s for %s while reading raw block", e.what(), pos.ToString());
         return false;
@@ -1093,13 +1101,22 @@ FlatFilePos BlockManager::WriteBlock(const CBlock& block, int nHeight)
         m_opts.notifications.fatalError(_("Failed to write block."));
         return FlatFilePos();
     }
-    BufferedWriter fileout{file};
+    {
+        BufferedWriter fileout{file};
 
-    // Write index header
-    fileout << GetParams().MessageStart() << block_size;
-    pos.nPos += STORAGE_HEADER_BYTES;
-    // Write block
-    fileout << TX_WITH_WITNESS(block);
+        // Write index header
+        fileout << GetParams().MessageStart() << block_size;
+        pos.nPos += STORAGE_HEADER_BYTES;
+        // Write block
+        fileout << TX_WITH_WITNESS(block);
+    }
+
+    if (file.fclose() != 0) {
+        LogError("Failed to close block file %s: %s", pos.ToString(), SysErrorString(errno));
+        m_opts.notifications.fatalError(_("Failed to close file when writing block."));
+        return FlatFilePos();
+    }
+
     return pos;
 }
 
@@ -1107,7 +1124,7 @@ static auto InitBlocksdirXorKey(const BlockManager::Options& opts)
 {
     // Bytes are serialized without length indicator, so this is also the exact
     // size of the XOR-key file.
-    std::array<std::byte, 8> xor_key{};
+    std::array<std::byte, Obfuscation::KEY_SIZE> obfuscation{};
 
     // Consider this to be the first run if the blocksdir contains only hidden
     // files (those which start with a .). Checking for a fully-empty dir would
@@ -1124,14 +1141,14 @@ static auto InitBlocksdirXorKey(const BlockManager::Options& opts)
     if (opts.use_xor && first_run) {
         // Only use random fresh key when the boolean option is set and on the
         // very first start of the program.
-        FastRandomContext{}.fillrand(xor_key);
+        FastRandomContext{}.fillrand(obfuscation);
     }
 
     const fs::path xor_key_path{opts.blocks_dir / "xor.dat"};
     if (fs::exists(xor_key_path)) {
         // A pre-existing xor key file has priority.
         AutoFile xor_key_file{fsbridge::fopen(xor_key_path, "rb")};
-        xor_key_file >> xor_key;
+        xor_key_file >> obfuscation;
     } else {
         // Create initial or missing xor key file
         AutoFile xor_key_file{fsbridge::fopen(xor_key_path,
@@ -1141,23 +1158,28 @@ static auto InitBlocksdirXorKey(const BlockManager::Options& opts)
             "wbx"
 #endif
         )};
-        xor_key_file << xor_key;
+        xor_key_file << obfuscation;
+        if (xor_key_file.fclose() != 0) {
+            throw std::runtime_error{strprintf("Error closing XOR key file %s: %s",
+                                               fs::PathToString(xor_key_path),
+                                               SysErrorString(errno))};
+        }
     }
     // If the user disabled the key, it must be zero.
-    if (!opts.use_xor && xor_key != decltype(xor_key){}) {
+    if (!opts.use_xor && obfuscation != decltype(obfuscation){}) {
         throw std::runtime_error{
             strprintf("The blocksdir XOR-key can not be disabled when a random key was already stored! "
                       "Stored key: '%s', stored path: '%s'.",
-                      HexStr(xor_key), fs::PathToString(xor_key_path)),
+                      HexStr(obfuscation), fs::PathToString(xor_key_path)),
         };
     }
-    LogInfo("Using obfuscation key for blocksdir *.dat files (%s): '%s'\n", fs::PathToString(opts.blocks_dir), HexStr(xor_key));
-    return std::vector<std::byte>{xor_key.begin(), xor_key.end()};
+    LogInfo("Using obfuscation key for blocksdir *.dat files (%s): '%s'\n", fs::PathToString(opts.blocks_dir), HexStr(obfuscation));
+    return Obfuscation{obfuscation};
 }
 
 BlockManager::BlockManager(const util::SignalInterrupt& interrupt, Options opts)
     : m_prune_mode{opts.prune_target > 0},
-      m_xor_key{InitBlocksdirXorKey(opts)},
+      m_obfuscation{InitBlocksdirXorKey(opts)},
       m_opts{std::move(opts)},
       m_block_file_seq{FlatFileSeq{m_opts.blocks_dir, "blk", m_opts.fast_prune ? 0x4000 /* 16kB */ : BLOCKFILE_CHUNK_SIZE}},
       m_undo_file_seq{FlatFileSeq{m_opts.blocks_dir, "rev", UNDOFILE_CHUNK_SIZE}},

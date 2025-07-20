@@ -58,7 +58,7 @@ def mine_large_blocks(node, n):
         # Submit to the node
         node.submitblock(block.serialize().hex())
 
-        previousblockhash = block.sha256
+        previousblockhash = block.hash_int
         height += 1
         mine_large_blocks.nTime += 1
 
@@ -69,7 +69,6 @@ class PruneTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 6
-        self.supports_cli = False
         self.uses_wallet = None
 
         # Create nodes 0 and 1 to mine.
