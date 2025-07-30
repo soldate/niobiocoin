@@ -765,9 +765,9 @@ static RPCHelpMan getblocktemplate()
             throw JSONRPCError(RPC_CLIENT_NOT_CONNECTED, CLIENT_NAME " is not connected!");
         }
 
-        if (miner.isInitialBlockDownload()) {
+        /*if (miner.isInitialBlockDownload()) {
             throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, CLIENT_NAME " is in initial sync and waiting for blocks...");
-        }
+        }*/
     }
 
     static unsigned int nTransactionsUpdatedLast;
